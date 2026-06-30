@@ -37,26 +37,19 @@
   <header class="bg-white border-b px-4 py-3 flex items-center justify-between">
     <div class="flex items-center gap-6">
       <div class="font-bold">YYPS</div>
-      <nav class="flex gap-1 text-sm">
-        <button onclick="go('dashboard')"  data-nav="dashboard"  class="px-3 py-1.5 rounded-lg">Dashboard</button>
-        <button onclick="go('containers')" data-nav="containers" class="px-3 py-1.5 rounded-lg">Containers</button>
-      </nav>
     </div>
     <button onclick="logout()" class="text-sm text-slate-500 hover:text-slate-900">Logout</button>
   </header>
 
   <main class="p-4 max-w-5xl mx-auto">
 
-    <!-- DASHBOARD VIEW -->
-    <section data-view="dashboard" class="space-y-6">
+    <!-- HOME VIEW: dashboard KPIs + container list -->
+    <section data-view="home" class="space-y-6">
       <h1 class="text-xl font-semibold">Dashboard</h1>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="kpis"></div>
-    </section>
 
-    <!-- CONTAINERS VIEW -->
-    <section data-view="containers" class="hidden space-y-4">
-      <div class="flex items-center justify-between">
-        <h1 class="text-xl font-semibold">Containers</h1>
+      <div class="flex items-center justify-between pt-2">
+        <h2 class="text-lg font-semibold">Containers</h2>
         <button onclick="openForm()" class="rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-700">+ Add Container</button>
       </div>
       <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
@@ -65,10 +58,36 @@
             <tr>
               <th class="px-4 py-2">Container</th><th class="px-4 py-2">PO</th>
               <th class="px-4 py-2">Status</th><th class="px-4 py-2">ETA</th>
+              <th class="px-4 py-2">Items</th>
               <th class="px-4 py-2 text-right">Manage</th>
             </tr>
           </thead>
           <tbody id="rows" class="divide-y"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CONTAINER DETAIL VIEW -->
+    <section data-view="detail" class="hidden space-y-4">
+      <button onclick="go('home')" class="text-sm text-slate-500 hover:text-slate-900">&larr; Back</button>
+      <div id="detailHead"></div>
+      <div class="flex items-center justify-between">
+        <h2 class="font-semibold">Products in this container</h2>
+        <button onclick="openItem()" class="rounded-lg bg-slate-900 text-white px-3 py-1.5 text-sm font-medium hover:bg-slate-700">+ Add Product</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+          <thead class="text-slate-400 text-left">
+            <tr>
+              <th class="px-4 py-2">Product</th><th class="px-4 py-2">SKU</th>
+              <th class="px-4 py-2 text-right">Quantity</th><th class="px-4 py-2"></th>
+            </tr>
+          </thead>
+          <tbody id="itemRows" class="divide-y"></tbody>
+          <tfoot><tr class="border-t font-medium">
+            <td class="px-4 py-2" colspan="2">Total</td>
+            <td class="px-4 py-2 text-right" id="itemTotal">0</td><td></td>
+          </tr></tfoot>
         </table>
       </div>
     </section>
@@ -99,6 +118,29 @@
   </form>
 </div>
 
+<!-- ADD PRODUCT MODAL -->
+<div id="itemModal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center p-4">
+  <form onsubmit="addItem(event)" class="bg-white w-full max-w-md rounded-2xl shadow-lg p-6 space-y-4">
+    <div class="text-lg font-semibold">Add Product</div>
+    <label class="block text-sm">Product
+      <input name="product" required placeholder="Office Chair"
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-800">
+    </label>
+    <label class="block text-sm">SKU
+      <input name="sku" required placeholder="CHR-001"
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-800">
+    </label>
+    <label class="block text-sm">Quantity
+      <input name="qty" type="number" min="1" value="1" required
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-800">
+    </label>
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick="closeItem()" class="px-4 py-2 text-sm rounded-lg text-slate-500 hover:bg-slate-100">Cancel</button>
+      <button class="px-4 py-2 text-sm rounded-lg bg-slate-900 text-white hover:bg-slate-700">Add</button>
+    </div>
+  </form>
+</div>
+
 <script>
 // status flow per spec.md: 中国仓 → 海运 → 美国仓 → Receiving. Exception is a side-state.
 const FLOW = ['中国仓', '海运', '美国仓', 'Receiving'];
@@ -107,11 +149,21 @@ const tone = s => ({'中国仓':'bg-slate-100 text-slate-600','海运':'bg-blue-
   'Exception':'bg-red-100 text-red-700'}[s] || 'bg-slate-100 text-slate-600');
 
 let containers = [
-  { id:'CN-4471', po:'PO-1032', status:'中国仓',    eta:'—' },
-  { id:'CN-4472', po:'PO-1035', status:'海运',      eta:'2026-07-14' },
-  { id:'CN-4473', po:'PO-1040', status:'美国仓',    eta:'2026-07-02' },
-  { id:'CN-4474', po:'PO-1041', status:'Exception', eta:'Hold' },
+  { id:'CN-4471', po:'PO-1032', status:'中国仓', eta:'—', items:[
+    { product:'Office Chair', sku:'CHR-001', qty:120 },
+    { product:'Standing Desk', sku:'DSK-204', qty:40 },
+  ]},
+  { id:'CN-4472', po:'PO-1035', status:'海运', eta:'2026-07-14', items:[
+    { product:'LED Monitor 27"', sku:'MON-027', qty:200 },
+  ]},
+  { id:'CN-4473', po:'PO-1040', status:'美国仓', eta:'2026-07-02', items:[
+    { product:'Keyboard', sku:'KBD-100', qty:500 },
+    { product:'Mouse', sku:'MSE-100', qty:500 },
+    { product:'USB Hub', sku:'HUB-007', qty:300 },
+  ]},
+  { id:'CN-4474', po:'PO-1041', status:'Exception', eta:'Hold', items:[] },
 ];
+let activeId = null; // container open in detail view
 
 function next(s){ const i = FLOW.indexOf(s); return i >= 0 && i < FLOW.length-1 ? FLOW[i+1] : s; }
 function advance(id){ const c = containers.find(c=>c.id===id); if(!c) return;
@@ -133,10 +185,11 @@ function render(){
   // table
   document.getElementById('rows').innerHTML = containers.map(c=>`
     <tr>
-      <td class="px-4 py-2 font-medium">${c.id}</td>
+      <td class="px-4 py-2 font-medium"><button onclick="openDetail('${c.id}')" class="text-slate-900 hover:underline">${c.id}</button></td>
       <td class="px-4 py-2 text-slate-500">${c.po}</td>
       <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${tone(c.status)}">${c.status}</span></td>
       <td class="px-4 py-2 text-slate-500">${c.eta||'—'}</td>
+      <td class="px-4 py-2 text-slate-500">${c.items.length} · ${c.items.reduce((s,i)=>s+i.qty,0)} pcs</td>
       <td class="px-4 py-2 text-right space-x-1">
         <button onclick="advance('${c.id}')" title="Advance status"
           class="px-2 py-1 rounded-md text-xs bg-slate-100 hover:bg-slate-200">→ Next</button>
@@ -158,12 +211,48 @@ function closeForm(){ modal.classList.add('hidden'); }
 function addContainer(e){
   e.preventDefault();
   const f = e.target;
-  containers.unshift({ id:f.id.value.trim(), po:f.po.value.trim(), status:'中国仓', eta:f.eta.value||'—' });
+  containers.unshift({ id:f.id.value.trim(), po:f.po.value.trim(), status:'中国仓', eta:f.eta.value||'—', items:[] });
   f.reset(); closeForm(); render();
 }
 
+// --- Container detail (line items) ---
+function openDetail(id){ activeId = id; renderDetail(); go('detail'); }
+
+function renderDetail(){
+  const c = containers.find(c=>c.id===activeId);
+  if(!c) return;
+  document.getElementById('detailHead').innerHTML = `
+    <h1 class="text-xl font-semibold">${c.id}</h1>
+    <div class="text-sm text-slate-500 mt-1">PO ${c.po} ·
+      <span class="px-2 py-0.5 rounded-full text-xs ${tone(c.status)}">${c.status}</span> ·
+      ETA ${c.eta||'—'}</div>`;
+  document.getElementById('itemRows').innerHTML = c.items.length ? c.items.map((i,idx)=>`
+    <tr>
+      <td class="px-4 py-2 font-medium">${i.product}</td>
+      <td class="px-4 py-2 text-slate-500">${i.sku}</td>
+      <td class="px-4 py-2 text-right">${i.qty}</td>
+      <td class="px-4 py-2 text-right">
+        <button onclick="removeItem(${idx})" class="text-xs text-red-500 hover:underline">remove</button></td>
+    </tr>`).join('') : `<tr><td colspan="4" class="px-4 py-6 text-center text-slate-400">No products yet</td></tr>`;
+  document.getElementById('itemTotal').textContent = c.items.reduce((s,i)=>s+i.qty,0) + ' pcs';
+}
+
+const itemModal = document.getElementById('itemModal');
+function openItem(){ itemModal.classList.remove('hidden'); }
+function closeItem(){ itemModal.classList.add('hidden'); }
+function addItem(e){
+  e.preventDefault();
+  const f = e.target, c = containers.find(c=>c.id===activeId);
+  c.items.push({ product:f.product.value.trim(), sku:f.sku.value.trim(), qty:Number(f.qty.value) });
+  f.reset(); closeItem(); renderDetail(); render();
+}
+function removeItem(idx){
+  const c = containers.find(c=>c.id===activeId);
+  c.items.splice(idx,1); renderDetail(); render();
+}
+
 const login_ = document.getElementById('login'), app = document.getElementById('app');
-function login(e){ e.preventDefault(); login_.classList.add('hidden'); app.classList.remove('hidden'); go('dashboard'); render(); }
+function login(e){ e.preventDefault(); login_.classList.add('hidden'); app.classList.remove('hidden'); go('home'); render(); }
 function logout(){ app.classList.add('hidden'); login_.classList.remove('hidden'); }
 </script>
 </body>

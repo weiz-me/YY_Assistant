@@ -72,10 +72,42 @@ One module per iteration. Deliver → PO reviews (UAT) → fix → next.
 
 ---
 
+## Container Module (designed in demo)
+
+A container is a shipment that holds a list of products. Each line = one product with a quantity.
+
+### Status flow
+`中国仓 → 海运 → 美国仓 → Receiving`, plus `Exception` as a side-state (toggle on/off, returns to 中国仓).
+
+### Data model
+
+```
+containers
+  id          text   PK   -- e.g. CN-4471
+  po          text        -- FK → purchase_orders, e.g. PO-1032
+  status      text        -- 中国仓 | 海运 | 美国仓 | Receiving | Exception
+  eta         date
+
+container_items
+  id          uuid   PK
+  container_id text  FK → containers.id
+  product     text        -- later FK → products
+  sku         text
+  qty         int
+```
+
+### Container UI (per demo.html)
+- **Home** — single screen: dashboard KPI cards on top, container list directly below (no separate Dashboard/Containers tabs)
+- **List** — container, PO, status badge, ETA, item summary (line count · total pcs), manage actions (advance status, toggle exception)
+- **Detail** — container header + product table (product / SKU / qty) with running total; add / remove line items; Back returns to Home
+- **Add Container** — container no, PO, ETA → starts at 中国仓 with empty item list
+
+---
+
 ## Open Questions (not yet decided)
 
-- Database schema — tables, relationships, ER diagram. **Nothing designed yet.**
-- Status engine — what states each entity (PO, Container, Receiving) moves through
+- Database schema for other entities — PO, Receiving, Products, Suppliers, Inventory. (Container/items drafted above.)
+- Status engine — states for PO and Receiving (Container flow decided above)
 - Exception engine — rules for raising/clearing exceptions
 - Notification engine — triggers and channels
 - YY Assistant — scope unknown
