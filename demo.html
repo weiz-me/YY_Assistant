@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YYPS Demo</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800">
+
+<!-- ponytail: fake auth, in-memory data, no persistence. Real app = Supabase + Next.js per spec.md -->
+
+<!-- LOGIN -->
+<div id="login" class="min-h-screen flex items-center justify-center p-4">
+  <form onsubmit="login(event)" class="bg-white w-full max-w-sm rounded-2xl shadow p-8 space-y-5">
+    <div class="text-center">
+      <div class="text-2xl font-bold tracking-tight">YYPS</div>
+      <div class="text-sm text-slate-400">YY Procurement System</div>
+    </div>
+    <label class="block text-sm">Email
+      <input type="email" value="demo@yyps.com" required
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-slate-800 outline-none">
+    </label>
+    <label class="block text-sm">Password
+      <input type="password" value="demo" required
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 focus:ring-2 focus:ring-slate-800 outline-none">
+    </label>
+    <label class="flex items-center gap-2 text-sm text-slate-500">
+      <input type="checkbox" checked> Remember me
+    </label>
+    <button class="w-full rounded-lg bg-slate-900 text-white py-2.5 font-medium hover:bg-slate-700">Sign In</button>
+  </form>
+</div>
+
+<!-- APP -->
+<div id="app" class="hidden min-h-screen">
+  <header class="bg-white border-b px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-6">
+      <div class="font-bold">YYPS</div>
+      <nav class="flex gap-1 text-sm">
+        <button onclick="go('dashboard')"  data-nav="dashboard"  class="px-3 py-1.5 rounded-lg">Dashboard</button>
+        <button onclick="go('containers')" data-nav="containers" class="px-3 py-1.5 rounded-lg">Containers</button>
+      </nav>
+    </div>
+    <button onclick="logout()" class="text-sm text-slate-500 hover:text-slate-900">Logout</button>
+  </header>
+
+  <main class="p-4 max-w-5xl mx-auto">
+
+    <!-- DASHBOARD VIEW -->
+    <section data-view="dashboard" class="space-y-6">
+      <h1 class="text-xl font-semibold">Dashboard</h1>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3" id="kpis"></div>
+    </section>
+
+    <!-- CONTAINERS VIEW -->
+    <section data-view="containers" class="hidden space-y-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-xl font-semibold">Containers</h1>
+        <button onclick="openForm()" class="rounded-lg bg-slate-900 text-white px-4 py-2 text-sm font-medium hover:bg-slate-700">+ Add Container</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+        <table class="w-full text-sm whitespace-nowrap">
+          <thead class="text-slate-400 text-left">
+            <tr>
+              <th class="px-4 py-2">Container</th><th class="px-4 py-2">PO</th>
+              <th class="px-4 py-2">Status</th><th class="px-4 py-2">ETA</th>
+              <th class="px-4 py-2 text-right">Manage</th>
+            </tr>
+          </thead>
+          <tbody id="rows" class="divide-y"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ADD CONTAINER MODAL -->
+<div id="modal" class="hidden fixed inset-0 bg-black/40 flex items-center justify-center p-4">
+  <form onsubmit="addContainer(event)" class="bg-white w-full max-w-md rounded-2xl shadow-lg p-6 space-y-4">
+    <div class="text-lg font-semibold">Add Container</div>
+    <label class="block text-sm">Container No.
+      <input name="id" required placeholder="CN-4480"
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-800">
+    </label>
+    <label class="block text-sm">PO No.
+      <input name="po" required placeholder="PO-1050"
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-800">
+    </label>
+    <label class="block text-sm">ETA
+      <input name="eta" type="date"
+        class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-slate-800">
+    </label>
+    <div class="flex justify-end gap-2 pt-2">
+      <button type="button" onclick="closeForm()" class="px-4 py-2 text-sm rounded-lg text-slate-500 hover:bg-slate-100">Cancel</button>
+      <button class="px-4 py-2 text-sm rounded-lg bg-slate-900 text-white hover:bg-slate-700">Create</button>
+    </div>
+  </form>
+</div>
+
+<script>
+// status flow per spec.md: 中国仓 → 海运 → 美国仓 → Receiving. Exception is a side-state.
+const FLOW = ['中国仓', '海运', '美国仓', 'Receiving'];
+const tone = s => ({'中国仓':'bg-slate-100 text-slate-600','海运':'bg-blue-100 text-blue-700',
+  '美国仓':'bg-green-100 text-green-700','Receiving':'bg-emerald-100 text-emerald-700',
+  'Exception':'bg-red-100 text-red-700'}[s] || 'bg-slate-100 text-slate-600');
+
+let containers = [
+  { id:'CN-4471', po:'PO-1032', status:'中国仓',    eta:'—' },
+  { id:'CN-4472', po:'PO-1035', status:'海运',      eta:'2026-07-14' },
+  { id:'CN-4473', po:'PO-1040', status:'美国仓',    eta:'2026-07-02' },
+  { id:'CN-4474', po:'PO-1041', status:'Exception', eta:'Hold' },
+];
+
+function next(s){ const i = FLOW.indexOf(s); return i >= 0 && i < FLOW.length-1 ? FLOW[i+1] : s; }
+function advance(id){ const c = containers.find(c=>c.id===id); if(!c) return;
+  c.status = c.status==='Exception' ? FLOW[0] : next(c.status); render(); }
+function flag(id){ const c = containers.find(c=>c.id===id);
+  if(c){ c.status = c.status==='Exception' ? FLOW[0] : 'Exception'; render(); } }
+
+function render(){
+  // KPIs
+  const count = s => containers.filter(c=>c.status===s).length;
+  document.getElementById('kpis').innerHTML = [
+    ['Open POs', containers.length, ''],
+    ['In Transit', count('海运'), ''],
+    ['Receiving', count('Receiving'), ''],
+    ['Exceptions', count('Exception'), 'text-red-600'],
+  ].map(([l,v,c])=>`<div class="bg-white rounded-xl p-4 shadow-sm">
+    <div class="text-2xl font-bold ${c}">${v}</div><div class="text-xs text-slate-400">${l}</div></div>`).join('');
+
+  // table
+  document.getElementById('rows').innerHTML = containers.map(c=>`
+    <tr>
+      <td class="px-4 py-2 font-medium">${c.id}</td>
+      <td class="px-4 py-2 text-slate-500">${c.po}</td>
+      <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full text-xs ${tone(c.status)}">${c.status}</span></td>
+      <td class="px-4 py-2 text-slate-500">${c.eta||'—'}</td>
+      <td class="px-4 py-2 text-right space-x-1">
+        <button onclick="advance('${c.id}')" title="Advance status"
+          class="px-2 py-1 rounded-md text-xs bg-slate-100 hover:bg-slate-200">→ Next</button>
+        <button onclick="flag('${c.id}')" title="Toggle exception"
+          class="px-2 py-1 rounded-md text-xs bg-red-50 text-red-600 hover:bg-red-100">⚑</button>
+      </td>
+    </tr>`).join('');
+}
+
+function go(view){
+  document.querySelectorAll('[data-view]').forEach(s=>s.classList.toggle('hidden', s.dataset.view!==view));
+  document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('bg-slate-900', b.dataset.nav===view));
+  document.querySelectorAll('[data-nav]').forEach(b=>b.classList.toggle('text-white', b.dataset.nav===view));
+}
+
+const modal = document.getElementById('modal');
+function openForm(){ modal.classList.remove('hidden'); }
+function closeForm(){ modal.classList.add('hidden'); }
+function addContainer(e){
+  e.preventDefault();
+  const f = e.target;
+  containers.unshift({ id:f.id.value.trim(), po:f.po.value.trim(), status:'中国仓', eta:f.eta.value||'—' });
+  f.reset(); closeForm(); render();
+}
+
+const login_ = document.getElementById('login'), app = document.getElementById('app');
+function login(e){ e.preventDefault(); login_.classList.add('hidden'); app.classList.remove('hidden'); go('dashboard'); render(); }
+function logout(){ app.classList.add('hidden'); login_.classList.remove('hidden'); }
+</script>
+</body>
+</html>
